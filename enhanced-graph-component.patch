@@ -1,0 +1,121 @@
+From bf8ffebc5feec6b88a73749e7273fb29bb81c7fd Mon Sep 17 00:00:00 2001
+From: rajvijay1504 <rajvijay1504@gmail.com>
+Date: Tue, 18 Jun 2024 13:03:07 +0530
+Subject: [PATCH] Enhanced Graph component to track ratio between two stocks
+ and display upper/lower bounds and trigger alerts
+
+---
+ src/DataManipulator.ts | 36 +++++++++++++++++++++++++-----------
+ src/Graph.tsx          | 25 +++++++++++++++----------
+ 2 files changed, 40 insertions(+), 21 deletions(-)
+
+diff --git a/src/DataManipulator.ts b/src/DataManipulator.ts
+index 7f62295..db764c2 100644
+--- a/src/DataManipulator.ts
++++ b/src/DataManipulator.ts
+@@ -1,20 +1,34 @@
+ import { ServerRespond } from './DataStreamer';
+ 
+ export interface Row {
+-  stock: string,
+-  top_ask_price: number,
++  ratio: number,
++  upper_bound: number,
++  lower_bound: number,
++  trigger_alert: number,
++  price_abc: number,
++  price_def: number,
+   timestamp: Date,
+ }
+ 
+-
+ export class DataManipulator {
+-  static generateRow(serverResponds: ServerRespond[]) {
+-    return serverResponds.map((el: any) => {
+-      return {
+-        stock: el.stock,
+-        top_ask_price: el.top_ask && el.top_ask.price || 0,
+-        timestamp: el.timestamp,
+-      };
+-    })
++  static generateRow(serverResponds: ServerRespond[]): Row {
++    const price_abc = serverResponds[0].top_ask && serverResponds[0].top_ask.price || 0;
++    const price_def = serverResponds[1].top_ask && serverResponds[1].top_ask.price || 0;
++
++    const ratio = price_abc && price_def ? price_abc / price_def : 0;
++    const upper_bound = 1.1;
++    const lower_bound = 0.99;
++    const trigger_alert = ratio > upper_bound || ratio < lower_bound ? ratio : NaN;
++
++    return {
++      ratio,
++      upper_bound,
++      lower_bound,
++      trigger_alert,
++      price_abc,
++      price_def,
++      timestamp: serverResponds[0].timestamp > serverResponds[1].timestamp ?
++        serverResponds[0].timestamp : serverResponds[1].timestamp,
++    };
+   }
+ }
+diff --git a/src/Graph.tsx b/src/Graph.tsx
+index 277797d..40a3a5d 100644
+--- a/src/Graph.tsx
++++ b/src/Graph.tsx
+@@ -11,6 +11,7 @@ interface IProps {
+ interface PerspectiveViewerElement extends HTMLElement {
+   load: (table: Table) => void,
+ }
++
+ class Graph extends Component<IProps, {}> {
+   table: Table | undefined;
+ 
+@@ -19,30 +20,34 @@ class Graph extends Component<IProps, {}> {
+   }
+ 
+   componentDidMount() {
+-    // Get element from the DOM.
+     const elem = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
+ 
+     const schema = {
+-      stock: 'string',
+-      top_ask_price: 'float',
+-      top_bid_price: 'float',
++      ratio: 'float',
++      upper_bound: 'float',
++      lower_bound: 'float',
++      trigger_alert: 'float',
++      price_abc: 'float',
++      price_def: 'float',
+       timestamp: 'date',
+     };
+ 
+     if (window.perspective && window.perspective.worker()) {
+       this.table = window.perspective.worker().table(schema);
+     }
++
+     if (this.table) {
+-      // Load the `table` in the `<perspective-viewer>` DOM reference.
+       elem.load(this.table);
+       elem.setAttribute('view', 'y_line');
+-      elem.setAttribute('column-pivots', '["stock"]');
+       elem.setAttribute('row-pivots', '["timestamp"]');
+-      elem.setAttribute('columns', '["top_ask_price"]');
++      elem.setAttribute('columns', '["ratio", "upper_bound", "lower_bound", "trigger_alert"]');
+       elem.setAttribute('aggregates', JSON.stringify({
+-        stock: 'distinctcount',
+-        top_ask_price: 'avg',
+-        top_bid_price: 'avg',
++        ratio: 'avg',
++        upper_bound: 'avg',
++        lower_bound: 'avg',
++        trigger_alert: 'avg',
++        price_abc: 'avg',
++        price_def: 'avg',
+         timestamp: 'distinct count',
+       }));
+     }
+-- 
+2.39.3 (Apple Git-146)
+
